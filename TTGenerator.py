@@ -142,8 +142,8 @@ def injectParentheses(subStatement):
 def userInput():
     global variables
     subStatements = []
-    #statement = statementFromFile()
-    statement = input("Enter a statement: ").lower()
+    statement = statementFromFile()
+    #statement = input("Enter a statement: ").lower()
     statement = statement.replace("t", "T").replace("f", "F")
     
     words = statement.split()
