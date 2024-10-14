@@ -142,8 +142,8 @@ def injectParentheses(subStatement):
 def userInput():
     global variables
     subStatements = []
-    statement = statementFromFile()
-    #statement = input("Enter a statement: ").lower()
+    #statement = statementFromFile()
+    statement = input("Enter a statement: ").lower()
     statement = statement.replace("t", "T").replace("f", "F")
     
     words = statement.split()
@@ -371,7 +371,15 @@ def extractPropositions(statement):
                 checkNegatedCompound = False  #if not, it's likely a proposition like ~ P
         
         if char == "~":
-            checkNegatedCompound = True #check if compound is to be negated
+            i = 1
+            count = 1
+            while statement[index - i] == "~" or statement[index - i] == " ": #backtracks until last negation is hit
+                if statement[index - i] == "~":  #counts negations
+                    count += 1
+                i += 1
+            if count % 2 == 1: #proceed checking negations if odd amount od negations, trims any other odd amount of negations to ~ only for clarity
+                 checkNegatedCompound = True #check if compound is to be negated
+                
             
         if char.isalpha() and char != 'v' and char.islower():
             propositions.add(char)
