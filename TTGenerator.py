@@ -236,7 +236,7 @@ def syntaxChecker(words):
              print("Invalid Statement: Parenthesis should be separated with a space. Maybe try \"... " + " ".join(word[:-1].upper())+ " )\"?") #guides the user to our program's syntax
              valid = False
              return
-        elif word.isalpha():
+        elif word.isalpha() and len(word) == 1:
             print("Invalid Statement: As much as we want to accept \"" + word + "\" Please enter P, Q or R as statements only. ") #guides the user to our program's syntax
             valid = False
             return
