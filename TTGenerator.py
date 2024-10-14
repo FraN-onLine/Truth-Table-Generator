@@ -3,8 +3,9 @@ import re #helps evaluating statements with multiple spaces
 import os
 
 connectives = ["~", "^", "v", "->", "<->"] # syntax for connectives used
-vars = ["p", "q", "r"] #
+vars = ["p", "q", "r", "T", "F"] # set of propositions and constant values which takes the place of vars when checking or computing
 matchingBrackets = {"(": ")"}  
+precedence = {"~": 3, "^": 2, "v": 2, "->": 1, "<->": 0}  # precedence of operators ~ being highest, <-> being lowest
 
 openBrackets = set(matchingBrackets.keys())
 closeBrackets = set(matchingBrackets.values())
@@ -16,7 +17,6 @@ thirdVar = []
 negationFirstVar = [] 
 negationSecondVar = [] 
 negationThirdVar= []
-negationCount = 0
 
 variables = []
 
@@ -89,14 +89,63 @@ def statementFromFile():
                     
             except ValueError as Ve:
                 print(f"Error found: {Ve}") 
-             
-             
+                
+
+def injectParentheses(subStatement):
+    
+    output = []  # Stack for building the parenthesized expression
+    operators = []  # Stack to hold operators and apply precedence
+    tokens = subStatement.split()  # Tokenize the input statement
+
+    # Helper function to handle precedence and pop from operator stack
+    def applyOperator():
+        op = operators.pop()
+        if op == "~":
+            operand = output.pop()
+            if operators: # to not cause an error when we check the top of the stack
+                if operators[-1] == "~": # cleans output by not adding space after the operand when we do more than one negation
+                    output.append(f" {op} {operand}") #without this ~ ~ ~ ~ q will be " ~ ~ ~ ~ q    "
+                else:
+                    output.append(f" {op} {operand} ")
+            else:
+                output.append(f" {op} {operand} ")
+        else:  # Binary operators
+            right = output.pop()
+            left = output.pop()
+            output.append(f"( {left} {op} {right} )")
+
+    # Iterate through the tokens
+    for token in tokens:
+        if token in vars:  # If it is a proposition, add it to output
+            output.append(token)
+        elif token == "~": 
+            operators.append(token)  # Push '~' to operator stack
+        elif token in ["^", "v", "->", "<->"]:
+            while (operators and operators[-1] in connectives and #adds to operator stack if empty or has lower precedence than top most operator
+                   precedence[operators[-1]] >= precedence[token]): #if the previous operator has higher or equal precedence than current operator, operate it
+                applyOperator()
+            operators.append(token)  # Push the current operator to the stack
+        elif token == "(":
+            operators.append(token)
+        elif token == ")":  
+            while operators and operators[-1] != "(": #follows precedence between ( and ), and brackets them 
+                applyOperator() 
+            operators.pop()  # Remove the left parenthesis
+
+    # handles remaining operators from the stack
+    while operators:
+        applyOperator()
+
+    # The final parenthesized expression will be in the output stack
+    return output[0] if output else ""
         
 def userInput():
     global variables
     subStatements = []
-    statement = statementFromFile()
-    #statement = input("Enter a statement: ").lower()
+    #statement = statementFromFile()
+    statement = input("Enter a statement: ").lower()
+    statement = statement.replace("t", "T").replace("f", "F")
+    
     words = statement.split()
     statement = re.sub(r'\s+', ' ', statement) #trims multiple statements using regex
     
@@ -108,7 +157,7 @@ def userInput():
         print("Propositional Variables:", variables) #Print test forda variables bes same thing sa bottom
         print("Sub-statements:", subStatements)
 
-        evaluateStatement(subStatements, variables )
+        evaluateStatement(subStatements, variables)
 
 def checkParentheses(words):
     global valid  # Idineclare ko para mamodify dito sa function yung tang-inang global var na yon
@@ -136,28 +185,30 @@ def checkParentheses(words):
         return False
 
 def syntaxChecker(words):
-    global valid, negateP, negateQ, negateR,negationCount
-    variables = []  # Store variables used
+    global valid, negateP, negateQ, negateR
+    variables = []  # Store variables used, this excludes T or F
     connectivesUsed = []  # Store connectives used
 
     for index, word in enumerate(words): #validates the syntax, checks variables and connectives
-        if word.isalpha() and word in vars:  
-            variables.append(word)
+        
+        if word.isalpha() and word in vars:
+            if word.islower(): #islower() filters T or F and non constant variables
+             variables.append(word)
+             
         elif word in connectives: 
             connectivesUsed.append(word)
-            if word == "~":
-                if words[index + 1] in vars:
+            if word == "~" and words[index + 1] in vars: #if the next element of a negation is a variable
+                i = 1
+                while words[index - i] == "~": #counts negations
+                    i += 1
+                if i % 2 == 1: #display it's negation if odd amount of negations
                     if words[index + 1] == "p":
                         negateP = True
-                        negationCount += 1
                     elif words[index + 1] == "q":
                         negateQ = True
-                        negationCount += 1
                     elif words[index + 1] == "r":
-                        negateR = True
-                        negationCount += 1
+                            negateR = True
                 
-
         elif word in matchingBrackets.keys() or word in matchingBrackets.values():
             if word in matchingBrackets.keys():
                 if words[index + 1] in connectives and words[index + 1] != "~":
@@ -240,19 +291,20 @@ def syntaxChecker(words):
 
     if valid:
         uniqueVars = set(variables)  # Remove duplicates from vars
-        varPopulator(len(uniqueVars)) 
+        varPopulator(len(uniqueVars), uniqueVars) 
         return True
         
-def varPopulator(n):
+def varPopulator(n, uniqueVars):
     global rowCount 
     rowCount = 2 ** n    # Number ng row sa truth table...tama tong formula dbaaaaaaaa 2^n?
+    if rowCount == 0:
+        rowCount = 1
 
     if n == 3:
         for i in range(rowCount): # alam niyo na to from 0 to 7 kung n = 3 and rowCount is 8
             firstVar.append("True" if (i // 4) % 2 == 0 else "False")  # nakafloor division yan ha...ieevaluate lang kung true or false tas iaappend sa first var and same din sa iba 
             secondVar.append("True" if (i // 2) % 2 == 0 else "False") # wag ko na explain ha, alam kong magaling kayo
-            thirdVar.append("True" if i % 2 == 0 else "False")  
-                
+            thirdVar.append("True" if i % 2 == 0 else "False")      
 
     elif n == 2:
         for i in range(rowCount):
@@ -262,64 +314,32 @@ def varPopulator(n):
     elif n == 1: #prinepare ko na to para sa mga kupal na mag-eenter ng p and not p etc
         for i in range(rowCount):
             firstVar.append("True" if (i % 2) == 0 else "False")  
+            
+    
 
-    calculateNegations(n)
-#( q v q ) ^ ( q -> ( q v ( q ^ ~ q ) ) )
-def calculateNegations(n):
+    calculateNegations(uniqueVars) #passes unique vars again to negations
+
+def calculateNegations(uniqueVars):
     global negationFirstVar, negationSecondVar, negationThirdVar
-    # If P is negated, create a list of the opposite values of P (True becomes False and vice versa) same for Q and R.
+    # If P is negated, create a list of the opposite values of P (True becomes False and vice versa) same for Q and R. basta awaten u lattan
     
-    if n == 3:
-        if negationCount == 3:
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar] if negateP else []
-            negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar] if negateQ else []
-            negationThirdVar = ["False" if temp == "True" else "True" for temp in thirdVar] if negateR else []
+    if rowCount == 8:
+        #every possible proposition is present and follows this order
+        negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar] if negateP else []
+        negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar] if negateQ else []
+        negationThirdVar = ["False" if temp == "True" else "True" for temp in thirdVar] if negateR else []
         
-        elif negationCount == 2:
-            if negateP and negateQ:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-                negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar]
-            elif negateP and negateR:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-                negationSecondVar = ["False" if temp == "True" else "True" for temp in thirdVar]
-            elif negateQ and negateR:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in secondVar]
-                negationSecondVar = ["False" if temp == "True" else "True" for temp in thirdVar]
-        
-        elif negationCount == 1:
-            if negateP:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-            elif negateQ:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in secondVar]
-            elif negateR:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in thirdVar]
-    
-    elif n == 2:
-        if negateP and negateQ :
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-            negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar]
-        elif negateP and negateR:
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-            negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar]
-        elif negateR and negateQ:
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-            negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar]
-
-        if negationCount == 1:
-            if negateP and not negateQ:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-            elif negateQ and not negateR:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-            elif negateR:
-                negationFirstVar = ["False" if temp == "True" else "True" for temp in secondVar]
-    
-    elif n == 1:
-        if negateP:
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-        if negateQ:
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
-        if negateR:
-            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar]
+    elif rowCount == 4: 
+        if "r" in uniqueVars: 
+            #first var guarantees that either exclusively P or Q if r is present, R being always the second var
+            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar] if negateP or negateQ else [] 
+            negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar] if negateR else []
+        else: #if r is not present we know variables are P and Q
+            negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar] if negateP else [] 
+            negationSecondVar = ["False" if temp == "True" else "True" for temp in secondVar] if negateR else []
+            
+    elif rowCount == 2: #if any negation is present, it's the negated first var
+         negationFirstVar = ["False" if temp == "True" else "True" for temp in firstVar] if negateP or negateQ or negateR else [] 
 
 def removeParentheses(subst):
 
@@ -329,7 +349,9 @@ def removeParentheses(subst):
 
 def extractPropositions(statement):
 
-    print(statement)
+    statement = injectParentheses(statement) #injects parenthesis for precedence
+    normalizedStatement = removeParentheses(statement) # sorts issues like ( ( ( p v q ) ) ) causing redundant calculations
+    print(normalizedStatement)
     propositions = set()
     subStatements = []
     stackOpenBracket = []
@@ -351,7 +373,7 @@ def extractPropositions(statement):
         if char == "~":
             checkNegatedCompound = True #check if compound is to be negated
             
-        if char.isalpha() and char != 'v':
+        if char.isalpha() and char != 'v' and char.islower():
             propositions.add(char)
 
         if char in openBrackets:
@@ -376,32 +398,32 @@ def extractPropositions(statement):
                             subStatements.append(negatedSubst)
                             processedStatements.add(negatedSubst)
                         negateSubStatement = False
-
-    normalizedStatement = removeParentheses(statement)
     
     if normalizedStatement not in processedStatements or normalizedStatement not in subStatements:
         subStatements.append(statement) 
     return sorted(propositions), subStatements #sorted para magreturn as list yung propositions 
 
-def evaluateStatement(subStatements, variables ):
+def evaluateStatement(subStatements, variables):
     results = [[] for _ in subStatements] #creates empty list for the results of every subStatements
 
     for i in range(rowCount): 
         if rowCount == 8:
             rowValues = {variables[0]: firstVar[i], variables[1]: secondVar[i], variables[2]: thirdVar[i]}  
 
-        if rowCount == 4:
+        elif rowCount == 4:
             rowValues= {variables[0]: firstVar[i], variables[1]: secondVar[i]}
 
-        if rowCount == 2:
+        elif rowCount == 2:
             rowValues = {variables[0]: firstVar[i]}
+            
+        else:
+            rowValues = {} #when there's no propositions and use of T or F is only used
 
         for index, subStatement in enumerate(subStatements):
             evaluatedResult = evalProposition(subStatement, rowValues) 
             results[index].append(evaluatedResult)
-        
-        n = len(variables)
-    printFinalTable(results, subStatements, variables  )
+
+    printFinalTable(results, subStatements, variables)
 
 def evalProposition(subStatement, rowValues):
 
@@ -418,6 +440,10 @@ def evalProposition(subStatement, rowValues):
         
         if 'q' in rowValues:
             subStatement = subStatement.replace("q", rowValues['q'])
+            
+        subStatement = re.sub(r"\bT\b", "True", subStatement)  # Convert standalone T to True
+        subStatement = re.sub(r"\bF\b", "False", subStatement)  # Convert standalone F to False
+
         
         subStatement = re.sub(r'~\s*\(([^)]+)\)', r'(not (\1))', subStatement) #this is converted before simple negations
         # this regex assures that not followed by a compound statement
@@ -437,8 +463,7 @@ def evalProposition(subStatement, rowValues):
 
 
 def printFinalTable(results, subStatements, variables):
-    vars = set(variables)
-    statementCount = len(vars)
+
     headers = []
 
     if 'p' in variables:
@@ -474,71 +499,18 @@ def printFinalTable(results, subStatements, variables):
             print(f"{firstVar[i]:<10} {secondVar[i]:<10}", end=" ")
         elif rowCount == 2:
             print(f"{firstVar[i]:<10}", end=" ")
+        if len(negationFirstVar) > 0:
+            row.append(f"{negationFirstVar[i]:<10}")
+        if len(negationSecondVar) > 0:
+            row.append(f"{negationSecondVar[i]:<10}")
+        if len(negationThirdVar) > 0:
+            row.append(f"{negationThirdVar[i]:<10}")
 
-        if statementCount == 3:
-            if negationCount == 3:
-                if negateP and negateQ and negateR:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-                    row.append(negationThirdVar[i])
+        print(" ".join(row), end=" ")
 
-            if negationCount == 2:
-                if negateP and negateQ and not negateR:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-                elif negateP and negateR and not negateQ:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-                elif negateQ and negateR and not negateP:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-
-            if negationCount == 1:
-                if negateP:
-                    row.append(negationFirstVar[i])
-                elif negateQ:
-                    row.append(negationSecondVar[i])
-                elif negateR:
-                    row.append(negationThirdVar[i])
-
-        if statementCount == 2:
-            if negationCount == 2:
-
-                if negateP and negateQ:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-                elif negateP and negateR:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-                elif negateQ and negateR:
-                    row.append(negationFirstVar[i])
-                    row.append(negationSecondVar[i])
-
-
-            if negationCount == 1:
-                if negateP:
-                    row.append(negationFirstVar[i])
-                elif negateQ:
-                    row.append(negationFirstVar[i])
-                elif negateR:
-                    row.append(negationFirstVar[i])
-        
-        if statementCount == 1:
-            if negationCount == 1:
-                if negateP:
-                    row.append(negationFirstVar[i])
-                elif negateQ:
-                    row.append(negationFirstVar[i])
-                elif negateR:
-                    row.append(negationFirstVar[i])
-            
-
-        print(" ".join([f"{val:<10}" for val in row]), end=" ")
-       
         # Print results for each sub-statement.
         resultRow = " ".join([f"{results[j][i]:<{len(subStatements[j]) + 7}}" for j in range(len(subStatements))])
         print(resultRow)
-
         
 # Entry point ng putang-inang user
 userInput()
