@@ -1,2 +1,1 @@
-Meow Meow Meow Meow,
-Miau Miau Miau Miau Miau
+Truth Table Generator in Compliance for CMPSC 136 Discrete Structurea
